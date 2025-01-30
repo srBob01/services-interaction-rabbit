@@ -1,0 +1,1 @@
+# services-interaction-rabbit
