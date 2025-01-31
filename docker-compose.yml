@@ -1,0 +1,121 @@
+services:
+  # ==================== RABBITMQ ====================
+  rabbitmq:
+    image: rabbitmq:3.11-management
+    container_name: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI (http://localhost:15672)
+
+  # ==================== MAILHOG ====================
+  mailhog:
+    image: mailhog/mailhog
+    container_name: mailhog
+    ports:
+      - "8025:8025"    # Web-интерфейс MailHog (http://localhost:8025)
+      - "1025:1025"    # SMTP порт
+
+  # ==================== SMS MOCK ====================
+  sms-mock:
+    image: mendhak/http-https-echo:29
+    container_name: sms_mock_service
+    environment:
+      HTTP_PORT: 80
+    ports:
+      - "8090:80"  # На хосте localhost:8090 будет эхо-сервис
+
+  # ==================== POSTGRES (PRODUCER DB) ====================
+  producer-db:
+    image: postgres:15-alpine
+    container_name: producer_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: producer_db
+    ports:
+      - "5432:5432"
+
+  # ==================== PRODUCER ====================
+  producer:
+    build:
+      context: ./producer        # Путь к папке с Dockerfile и исходным кодом Producer
+      dockerfile: Dockerfile
+    container_name: producer_app
+    depends_on:
+      - rabbitmq
+      - producer-db
+    environment:
+      # Подключение к Postgres
+      DB_HOST: producer-db
+      DB_PORT: 5432
+      DB_NAME: producer_db
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+
+      # Подключение к RabbitMQ
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: guest
+      RABBITMQ_PASSWORD: guest
+
+      # Настройки Exchange / Queue
+      ITEM_EXCHANGE: itemDirectExchange
+      ITEM_ROUTING_KEY: itemKey
+      ITEM_QUEUE: itemQueue
+
+      CARD_EXCHANGE: cardTopicExchange
+      CARD_ROUTING_KEY: card.new
+      CARD_TEMPLATE_ROUTING_KEY: card.*
+      CARD_QUEUE: cardQueue
+    ports:
+      - "8080:8080"  # Producer доступен на http://localhost:8080 (если есть REST)
+
+  # ==================== ITEM CONSUMER ====================
+  item-consumer:
+    build:
+      context: ./item-consumer   # Папка с Dockerfile + код ItemConsumer
+      dockerfile: Dockerfile
+    container_name: item_consumer_app
+    depends_on:
+      - rabbitmq
+      - mailhog
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: guest
+
+      ITEM_QUEUE: itemQueue
+
+      MAIL_HOST: mailhog
+      MAIL_PORT: 1025
+    ports:
+      - "8081:8081"  # Если есть REST эндпоинты для ItemConsumer (необязательно)
+
+  # ==================== CARD CONSUMER ====================
+  card-consumer:
+    build:
+      context: ./card-consumer   # Папка с Dockerfile + код CardConsumer
+      dockerfile: Dockerfile
+    container_name: card_consumer_app
+    depends_on:
+      - rabbitmq
+      - sms-mock
+    environment:
+      # Подключение к RabbitMQ
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: guest
+
+      # Какую очередь слушать
+      CARD_QUEUE: cardQueue
+
+      # Куда шлём SMS-запрос
+      SMS_MOCK_HOST: sms-mock
+      SMS_MOCK_PORT: 80
+    ports:
+      - "8082:8082"

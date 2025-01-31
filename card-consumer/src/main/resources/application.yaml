@@ -1,0 +1,18 @@
+server:
+  port: 8082
+
+spring:
+  rabbitmq:
+    host: "${RABBITMQ_HOST:localhost}"
+    port: "${RABBITMQ_PORT:5672}"
+    username: "${RABBITMQ_USER:guest}"
+    password: "${RABBITMQ_PASS:guest}"
+
+app:
+  rabbit:
+    card:
+      queue: "${CARD_QUEUE:cardQueue}"
+  sms:
+    mock:
+      host: "${SMS_MOCK_HOST:sms-mock}"
+      port: "${SMS_MOCK_PORT:80}"
